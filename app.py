@@ -1,53 +1,45 @@
-import streamlit as st
+from flask import Flask, request, jsonify
 import pandas as pd
 import pickle
 
-with open('decision_tree_model.pkl', 'rb') as file:
-    model = pickle.load(file)
+with open('decision_tree_model.pkl', 'rb') as f:
+    model = pickle.load(f)
 
-st.title("Customer Churn Prediction App")
+with open('le_geo.pkl', 'rb') as f:
+    le_geo = pickle.load(f)
 
-st.write("Enter customer details below to predict whether they are likely to exit the bank.")
+with open('le_gender.pkl', 'rb') as f:
+    le_gender = pickle.load(f)
 
-credit_score = st.number_input("Credit Score", min_value=300, max_value=900, value=600)
-geography = st.selectbox("Geography", ["France", "Germany", "Spain"])
-gender = st.selectbox("Gender", ["Female", "Male"])
-age = st.number_input("Age", min_value=18, max_value=100, value=35)
-tenure = st.number_input("Tenure (Years)", min_value=0, max_value=10, value=5)
-balance = st.number_input("Account Balance", min_value=0.0, value=50000.0)
-num_of_products = st.number_input("Number of Products", min_value=1, max_value=4, value=1)
-has_cr_card = st.selectbox("Has Credit Card?", [0, 1])
-is_active_member = st.selectbox("Is Active Member?", [0, 1])
-estimated_salary = st.number_input("Estimated Salary", min_value=0.0, value=60000.0)
+app = Flask(__name__)
 
-if st.button("Predict"):
-    data = {
-        'CreditScore': credit_score,
-        'Geography': geography,
-        'Gender': gender,
-        'Age': age,
-        'Tenure': tenure,
-        'Balance': balance,
-        'NumOfProducts': num_of_products,
-        'HasCrCard': has_cr_card,
-        'IsActiveMember': is_active_member,
-        'EstimatedSalary': estimated_salary
-    }
+@app.route('/')
+def home():
+    return "Decision Tree Churn Prediction API is running!"
 
-    df_input = pd.DataFrame([data])
-    mapping_geo = {'France': 0, 'Germany': 1, 'Spain': 2}
-    mapping_gender = {'Female': 0, 'Male': 1}
-    df_input['Geography'] = df_input['Geography'].map(mapping_geo)
-    df_input['Gender'] = df_input['Gender'].map(mapping_gender)
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        data = request.get_json()
+        df_input = pd.DataFrame([data])
 
-    required_cols = ['CreditScore', 'Geography', 'Gender', 'Age', 'Tenure',
-                     'Balance', 'NumOfProducts', 'HasCrCard', 'IsActiveMember', 'EstimatedSalary']
-    df_input = df_input[required_cols]
+        df_input['Geography'] = le_geo.transform(df_input['Geography'])
+        df_input['Gender'] = le_gender.transform(df_input['Gender'])
 
-    prediction = model.predict(df_input)[0]
-    probability = model.predict_proba(df_input)[0][1]
+        required_cols = ['CreditScore', 'Geography', 'Gender', 'Age', 'Tenure',
+                         'Balance', 'NumOfProducts', 'HasCrCard', 'IsActiveMember', 'EstimatedSalary']
+        df_input = df_input[required_cols]
 
-    if prediction == 1:
-        st.write(f"Customer is likely to LEAVE the bank. Exit Probability: {probability:.2f}")
-    else:
-        st.write(f"Customer is likely to STAY with the bank. Exit Probability: {probability:.2f}")
+        prediction = model.predict(df_input)[0]
+        probability = model.predict_proba(df_input)[0][1]
+
+        return jsonify({
+            'prediction': int(prediction),
+            'exit_probability': float(probability)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+if __name__ == '__main__':
+    app.run(debug=True)
