@@ -1,45 +1,50 @@
-from flask import Flask, request, jsonify
+import streamlit as st
 import pandas as pd
 import pickle
 
-with open('decision_tree_model.pkl', 'rb') as f:
-    model = pickle.load(f)
+st.set_page_config(page_title="Churn Prediction", layout="centered")
 
-with open('le_geo.pkl', 'rb') as f:
-    le_geo = pickle.load(f)
+st.title("Bank Customer Churn Prediction")
 
-with open('le_gender.pkl', 'rb') as f:
-    le_gender = pickle.load(f)
+with open("decision_tree_model.pkl", "rb") as file:
+    model = pickle.load(file)
 
-app = Flask(__name__)
+st.header("Enter Customer Details")
 
-@app.route('/')
-def home():
-    return "Decision Tree Churn Prediction API is running!"
+credit_score = st.number_input("Credit Score", min_value=300, max_value=900, value=600)
+geography = st.selectbox("Geography", ["France", "Germany", "Spain"])
+gender = st.selectbox("Gender", ["Male", "Female"])
+age = st.number_input("Age", min_value=18, max_value=100, value=35)
+tenure = st.number_input("Tenure (years)", min_value=0, max_value=10, value=3)
+balance = st.number_input("Balance", min_value=0.0, value=50000.0)
+num_of_products = st.number_input("Number of Products", min_value=1, max_value=4, value=1)
+has_cr_card = st.selectbox("Has Credit Card", ["Yes", "No"])
+is_active_member = st.selectbox("Is Active Member", ["Yes", "No"])
+estimated_salary = st.number_input("Estimated Salary", min_value=0.0, value=50000.0)
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    try:
-        data = request.get_json()
-        df_input = pd.DataFrame([data])
+if st.button("Predict Churn"):
+    mapping_geo = {"France": 0, "Germany": 1, "Spain": 2}
+    mapping_gender = {"Male": 1, "Female": 0}
+    mapping_yes_no = {"Yes": 1, "No": 0}
 
-        df_input['Geography'] = le_geo.transform(df_input['Geography'])
-        df_input['Gender'] = le_gender.transform(df_input['Gender'])
+    input_dict = {
+        "CreditScore": credit_score,
+        "Geography": mapping_geo[geography],
+        "Gender": mapping_gender[gender],
+        "Age": age,
+        "Tenure": tenure,
+        "Balance": balance,
+        "NumOfProducts": num_of_products,
+        "HasCrCard": mapping_yes_no[has_cr_card],
+        "IsActiveMember": mapping_yes_no[is_active_member],
+        "EstimatedSalary": estimated_salary
+    }
 
-        required_cols = ['CreditScore', 'Geography', 'Gender', 'Age', 'Tenure',
-                         'Balance', 'NumOfProducts', 'HasCrCard', 'IsActiveMember', 'EstimatedSalary']
-        df_input = df_input[required_cols]
+    input_df = pd.DataFrame([input_dict])
+    prediction = model.predict(input_df)[0]
+    probability = model.predict_proba(input_df)[0][1]
 
-        prediction = model.predict(df_input)[0]
-        probability = model.predict_proba(df_input)[0][1]
-
-        return jsonify({
-            'prediction': int(prediction),
-            'exit_probability': float(probability)
-        })
-
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-if __name__ == '__main__':
-    app.run(debug=True)
+    if prediction == 1:
+        st.success(f"The customer is likely to exit with probability {probability:.2f}")
+    else:
+        st.info(f"The customer is likely to stay with probability {1-probability:.2f}")
